@@ -1,6 +1,6 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from './_supabase';
-import { validateInitData } from './_util';
+import { supabase } from './_supabase.js';
+import { validateInitData } from './_util.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {

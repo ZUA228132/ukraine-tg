@@ -1,5 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
-import { supabase } from './_supabase';
+import { supabase } from './_supabase.js';
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
   try {
@@ -12,7 +12,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       ADMIN_TG_IDS: (process.env.ADMIN_TG_IDS || '').split(',').filter(Boolean).length
     };
 
-    // light DB check: select 1 from users (may fail if table missing)
     const { error: dbError } = await supabase.from('users').select('tg_id').limit(1);
     const ok = !dbError;
     res.status(ok ? 200 : 500).json({ ok, env, dbError: dbError?.message || null });
