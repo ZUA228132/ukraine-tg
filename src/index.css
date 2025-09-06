@@ -1,6 +1,2 @@
-:root { color-scheme: dark light; }
+/* minimal, keep original design classes from Tailwind CDN */
 html, body, #root { height: 100%; margin: 0; }
-body { background: #0b1020; color: #fff; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; }
-a { color: #7cc2ff; }
-button { cursor: pointer; }
-input[type="file"] { color: #ccc; }
