@@ -1,0 +1,7 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root { --bg: #0b1020; --fg: #ffffff; }
+html, body { height: 100%; background: var(--bg); color: var(--fg); }
+a { color: #7cc2ff; } button { cursor: pointer; } input[type="file"] { color: #ccc; }

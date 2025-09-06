@@ -1,0 +1,7 @@
+{
+  "name": "Tele-Face ID",
+  "description": "A beautiful face verification web application for Telegram, inspired by Apple's Face ID.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
