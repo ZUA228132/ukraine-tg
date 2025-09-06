@@ -1,99 +1,79 @@
-// This service has been deprecated for Gemini API calls.
-// The functions below are stubs for a future backend integration with Vercel and Supabase.
-
+// Integrated backend calls to Vercel functions + Supabase
 import { Submission } from '../types';
 
-// --- Placeholder for Telegram Bot notifications ---
-// Замените на ваши реальные данные
-const TELEGRAM_BOT_TOKEN = 'YOUR_TELEGRAM_BOT_TOKEN'; // Например: '123456:ABC-DEF1234ghIkl-zyx57W2v1u123ew11'
-const TELEGRAM_CHAT_ID = 'YOUR_TELEGRAM_CHAT_ID'; // Например: '-1001234567890' или '123456789'
+function initData(): string {
+  // Telegram injects WebApp.initData
+  return (window as any)?.Telegram?.WebApp?.initData || '';
+}
 
+async function api(path: string, opts: RequestInit = {}) {
+  const res = await fetch(path, {
+    ...opts,
+    headers: {
+      'x-tg-initdata': initData(),
+      ...(opts.headers || {}),
+      ...(opts.body && typeof opts.body === 'string' ? { 'content-type': 'application/json' } : {}),
+    },
+  });
+  if (!res.ok) throw new Error(await res.text());
+  return res.json();
+}
 
-// Локальное хранилище для имитации базы данных
-let submissionsDB: Submission[] = [];
+/** Request signed upload URL and upload a Blob/file */
+async function upload(kind: 'video'|'doc', file: Blob, filename: string): Promise<string> {
+  const r = await api('/api/upload-url', { method: 'POST', body: JSON.stringify({ kind, filename }) });
+  const put = await fetch(r.uploadUrl, { method: 'PUT', body: file });
+  if (!put.ok) throw new Error('upload failed');
+  return r.path as string;
+}
 
-/**
- * Отправляет уведомление в Telegram-бот.
- */
-const notifyTelegramBot = async (userName: string) => {
-  if (TELEGRAM_BOT_TOKEN === 'YOUR_TELEGRAM_BOT_TOKEN' || TELEGRAM_CHAT_ID === 'YOUR_TELEGRAM_CHAT_ID') {
-    console.warn('Telegram Bot Token or Chat ID is not configured. Skipping notification.');
-    return;
-  }
-  const message = `✅ Нова заявка на верифікацію від: *${userName}*`;
-  const url = `https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage`;
-
-  try {
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        chat_id: TELEGRAM_CHAT_ID,
-        text: message,
-        parse_mode: 'Markdown',
-      }),
-    });
-    if (!response.ok) {
-        console.error('Telegram API error:', await response.json());
-    }
-  } catch (error) {
-    console.error('Failed to send Telegram notification:', error);
-  }
-};
-
-/**
- * Имитирует отправку данных верификации на бэкенд.
- */
 export const submitVerification = async (
   userName: string,
   imageData: string,
   videoBlob: Blob | null,
   passportImageData: string
 ): Promise<Submission> => {
-  console.log('Отправка верификации на бэкенд...');
-  console.log('Пользователь:', userName);
-  console.log('Размер фото:', `${(imageData.length / 1024).toFixed(2)} KB`);
-  console.log('Размер фото паспорта:', `${(passportImageData.length / 1024).toFixed(2)} KB`);
-  if (videoBlob) {
-    console.log('Размер видео:', `${(videoBlob.size / 1024 / 1024).toFixed(2)} MB`);
+  // Upsert me (also sets role if admin)
+  await api('/api/auth-me', { method: 'POST' });
+
+  // Convert base64 data URLs to Blob
+  async function dataUrlToBlob(dataUrl: string) {
+    const res = await fetch(dataUrl);
+    return await res.blob();
   }
 
-  const newSubmission: Submission = {
+  const docBlob = await dataUrlToBlob(passportImageData);
+  const faceBlob = await dataUrlToBlob(imageData);
+  // Prefer video for 'video'; fallback to face image if no video
+  const video = videoBlob ?? faceBlob;
+
+  const videoPath = await upload('video', video, 'selfie.mp4');
+  const docPath = await upload('doc', docBlob, 'document.png');
+
+  await api('/api/submit', { method: 'POST', body: JSON.stringify({ videoPath, docPath }) });
+
+  // Return a local Submission shape for UI harmony
+  return {
     id: Date.now().toString(),
     userName,
     imageData,
     passportImageData,
     timestamp: new Date().toISOString(),
   };
-
-  // Имитация задержки сети
-  await new Promise(resolve => setTimeout(resolve, 1500));
-  
-  // Добавляем в нашу "базу данных" в памяти
-  submissionsDB.push(newSubmission);
-
-  // Отправляем уведомление
-  await notifyTelegramBot(userName);
-
-  return newSubmission;
 };
 
-/**
- * Имитирует получение всех заявок для админ-панели.
- */
 export const getSubmissions = async (): Promise<Submission[]> => {
-  console.log('Получение заявок с бэкенда...');
-  // Имитация задержки сети
-  await new Promise(resolve => setTimeout(resolve, 1000));
-  return [...submissionsDB].reverse(); // Возвращаем перевернутую копию
+  const r = await api('/api/me-verifications');
+  return (r.items || []).map((it: any) => ({
+    id: it.id,
+    userName: String(it.user_tg_id),
+    imageData: it.video_path, // storage key; no preview image here
+    passportImageData: it.doc_path,
+    timestamp: it.created_at,
+  }));
 };
 
-/**
- * Имитирует удаление всех заявок из базы данных.
- */
 export const clearSubmissions = async (): Promise<void> => {
-  console.log('Очистка всех заявок на бэкенде...');
-  // Имитация задержки сети
-  await new Promise(resolve => setTimeout(resolve, 500));
-  submissionsDB = [];
+  // For safety, do nothing destructive in prod. Admin can reject from /admin.
+  return;
 };
