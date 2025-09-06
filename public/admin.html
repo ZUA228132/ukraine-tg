@@ -2,141 +2,120 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Admin Moderation</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='12' fill='%230b1020'/%3E%3Cpath d='M16 40l8-12 8 10 8-14 8 16' stroke='%237cc2ff' stroke-width='6' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E">
   <style>
-    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial; background:#0b1020; color:#fff; margin:0; }
-    header { padding:16px; border-bottom:1px solid #223; }
-    main { padding:16px; max-width: 1200px; margin: 0 auto; }
-    .grid { display:grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap:16px; }
-    .card { border:1px solid #223; border-radius:12px; overflow:hidden; background:#121933; }
-    .card header { padding:12px 14px; border-bottom:1px solid #223; }
-    .meta { font-size:12px; opacity:.7 }
-    .media { display:flex; gap:8px; padding:8px; }
-    .media > * { flex:1; min-height:160px; background:#0d1429; border-radius:8px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
-    .row { display:flex; gap:8px; padding:8px; }
-    button { border:none; border-radius:8px; padding:8px 12px; background:#2563eb; color:#fff; cursor:pointer; }
-    button.red { background:#dc2626; }
-    button:disabled { opacity:.6; cursor:not-allowed; }
-    a { color:#7cc2ff; }
-    .empty { text-align:center; opacity:.7; padding:40px 0; }
-    .topbar { display:flex; align-items:center; gap:8px; }
-    input[type="text"] { background:#0d1429; border:1px solid #223; color:#fff; padding:8px; border-radius:8px; width:420px; }
+    :root { color-scheme: dark; }
+    body { margin:0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; background:#0b1020; color:#e5ecff; }
+    header { padding:16px 20px; font-weight:700; font-size:24px; }
+    .bar { display:flex; gap:8px; padding:0 20px 16px; align-items:center; }
+    input[type="text"] { flex:1; padding:10px 12px; border-radius:10px; border:1px solid #2a3355; background:#0f1530; color:#e5ecff; }
+    button { padding:10px 14px; background:#1b53ff; color:#fff; border:none; border-radius:10px; font-weight:600; }
+    .cards { display:grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap:12px; padding:0 20px 40px; }
+    .card { background:#0f1530; border:1px solid #2a3355; border-radius:14px; overflow:hidden; }
+    .card header { font-size:16px; padding:12px 14px; border-bottom:1px solid #2a3355; }
+    .media { padding:12px 14px; display:flex; flex-direction:column; gap:8px; }
+    video, img { width:100%; border-radius:10px; background:#000; }
+    .actions { display:flex; gap:8px; padding:12px 14px; }
+    .muted { color:#90a0d0; font-size:12px; padding:0 20px 12px; }
+    .error { color:#ff7a7a; padding:0 20px 10px; }
   </style>
 </head>
 <body>
-<header>
-  <div class="topbar">
-    <strong>Admin Moderation</strong>
-    <span style="flex:1"></span>
-    <input id="initData" type="text" placeholder="initData (auto from Telegram)" />
+  <header>Admin Moderation</header>
+  <div class="bar">
+    <input id="init" type="text" placeholder="Paste Telegram initData here (or it will auto-fill from Telegram)" />
+    <button id="save">Save</button>
     <button id="reload">Reload</button>
   </div>
-</header>
-<main>
-  <div id="status" class="meta"></div>
-  <div id="list" class="grid"></div>
-  <div id="empty" class="empty" style="display:none;">No pending items.</div>
-</main>
+  <div class="muted">Tip: you can pass initData via URL like <code>?initData=...</code>. It will be used automatically.</div>
+  <div id="status" class="muted"></div>
+  <div id="error" class="error"></div>
+  <section id="cards" class="cards"></section>
 
 <script>
-function getInitData() {
-  const urlInit = new URLSearchParams(location.search).get('initData') || '';
-  const tgInit = (window.Telegram && Telegram.WebApp && Telegram.WebApp.initData) || '';
-  const field = document.getElementById('initData').value.trim();
-  return field || urlInit || tgInit;
-}
-async function api(path, method='GET', body=null) {
-  const headers = { 'x-tg-initdata': getInitData() };
-  if (body) headers['content-type'] = 'application/json';
-  const res = await fetch(path, { method, headers, body: body ? JSON.stringify(body) : null });
-  if (!res.ok) throw new Error(await res.text());
-  return res.json();
-}
-async function signed(path) {
-  const r = await api('/api/admin-download-url', 'POST', { path });
-  return r.url;
-}
-function fmtDate(s){try{return new Date(s).toLocaleString()}catch(_){return s}}
+(function(){
+  const qs = new URLSearchParams(location.search);
+  const input = document.getElementById('init');
+  const statusEl = document.getElementById('status');
+  const errorEl = document.getElementById('error');
+  const cards = document.getElementById('cards');
 
-async function load() {
-  const status = document.getElementById('status');
-  status.textContent = 'Loading...';
-  try {
-    const r = await api('/api/admin-verifications?status=pending');
-    const items = r.items || [];
-    const list = document.getElementById('list');
-    const empty = document.getElementById('empty');
-    list.innerHTML='';
-    empty.style.display = items.length ? 'none' : 'block';
-    for (const it of items) {
+  function getInitData(){
+    const tga = window.Telegram && window.Telegram.WebApp ? window.Telegram.WebApp.initData : '';
+    if (tga) return tga;
+    const fromQS = qs.get('initData'); if (fromQS) return fromQS;
+    const fromLS = localStorage.getItem('tg_init_data'); if (fromLS) return fromLS;
+    return input.value.trim();
+  }
+
+  async function auth() {
+    errorEl.textContent = '';
+    const initData = getInitData();
+    input.value = initData;
+    if (!initData) { errorEl.textContent = 'No initData: open via Telegram or paste initData.'; return null; }
+    const r = await fetch('/api/auth-me', { method: 'POST', headers: { 'x-tg-initdata': initData } });
+    if (!r.ok) {
+      const t = await r.text().catch(()=>'');
+      throw new Error(t || r.statusText);
+    }
+    const me = await r.json();
+    statusEl.textContent = `Authed as @${me.username || ''} (${me.tg_id}) role=${me.role}`;
+    return initData;
+  }
+
+  async function loadPending(initData){
+    const r = await fetch('/api/admin-verifications', { headers: { 'x-tg-initdata': initData }});
+    if (!r.ok) { throw new Error(await r.text()); }
+    const list = await r.json(); // expect array of rows
+    cards.innerHTML = '';
+    for (const v of list) {
       const card = document.createElement('div');
       card.className = 'card';
-      card.innerHTML = `
-        <header>
-          <div><strong>User:</strong> ${it.user_tg_id}</div>
-          <div class="meta">${fmtDate(it.created_at)}</div>
-        </header>
+      card.innerHTML = \`
+        <header>#\${v.id} — status: \${v.status}</header>
         <div class="media">
-          <div class="video-wrap"><span>Video</span></div>
-          <div class="doc-wrap"><span>Doc</span></div>
+          <video controls src="/api/signed-download?path=\${encodeURIComponent(v.video_path)}"></video>
+          <img alt="document" src="/api/signed-download?path=\${encodeURIComponent(v.doc_path)}" onerror="this.outerHTML='<a href=\'/api/signed-download?path=\${encodeURIComponent(v.doc_path)}\' target=\'_blank\'>Open document</a>'">
         </div>
-        <div class="row">
-          <button class="approve">Approve</button>
-          <button class="reject red">Reject</button>
-          <span style="flex:1"></span>
-          <a class="open-video" href="#" target="_blank">Open video</a>
-          <a class="open-doc" href="#" target="_blank">Open doc</a>
+        <div class="actions">
+          <button data-id="\${v.id}" data-act="approve">Approve</button>
+          <button data-id="\${v.id}" data-act="reject">Reject</button>
         </div>
-      `;
-      list.appendChild(card);
-
-      // Fetch signed URLs
-      Promise.all([signed(it.video_path), signed(it.doc_path)]).then(([vUrl, dUrl]) => {
-        // Video preview
-        const vWrap = card.querySelector('.video-wrap');
-        vWrap.innerHTML = '';
-        const v = document.createElement('video');
-        v.src = vUrl;
-        v.controls = true;
-        v.style.width='100%'; v.style.height='200px'; v.style.objectFit='cover';
-        vWrap.appendChild(v);
-
-        // Doc preview: try image, else show link text
-        const dWrap = card.querySelector('.doc-wrap');
-        dWrap.innerHTML = '';
-        const img = document.createElement('img');
-        img.src = dUrl;
-        img.style.maxWidth='100%'; img.style.maxHeight='200px'; img.style.objectFit='cover';
-        img.onload = () => { dWrap.innerHTML=''; dWrap.appendChild(img); };
-        img.onerror = () => { dWrap.innerHTML = '<div>Preview not available. Open document.</div>'; };
-
-        (card.querySelector('.open-video')).href = vUrl;
-        (card.querySelector('.open-doc')).href = dUrl;
-      }).catch(e => { console.error(e); });
-
-      // Actions
-      card.querySelector('.approve').onclick = async () => {
-        await api('/api/admin-review', 'POST', { id: it.id, action: 'approve' });
-        card.remove();
-        if (!list.children.length) empty.style.display='block';
-      };
-      card.querySelector('.reject').onclick = async () => {
-        const notes = prompt('Reason? (optional)') || '';
-        await api('/api/admin-review', 'POST', { id: it.id, action: 'reject', notes });
-        card.remove();
-        if (!list.children.length) empty.style.display='block';
-      };
+      \`;
+      cards.appendChild(card);
     }
-    status.textContent = 'Done';
-  } catch (e) {
-    console.error(e);
-    status.textContent = 'Error: ' + e;
-  }
-}
 
-document.getElementById('reload').onclick = load;
-load();
+    cards.addEventListener('click', async (e) => {
+      const btn = e.target.closest('button'); if(!btn) return;
+      const id = btn.dataset.id, act = btn.dataset.act;
+      const r2 = await fetch('/api/admin-review', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-tg-initdata': initData },
+        body: JSON.stringify({ id, action: act, notes: act==='reject' ? 'Rejected by admin' : undefined })
+      });
+      if (!r2.ok) { alert(await r2.text()); return; }
+      alert('OK'); location.reload();
+    }, { once: true });
+  }
+
+  document.getElementById('save').onclick = () => {
+    localStorage.setItem('tg_init_data', input.value.trim());
+    statusEl.textContent = 'Saved initData to local storage.';
+  };
+  document.getElementById('reload').onclick = () => location.href = location.pathname + '?initData=' + encodeURIComponent(input.value.trim());
+
+  (async () => {
+    try {
+      const init = await auth();
+      if (!init) return;
+      await loadPending(init);
+    } catch (err) {
+      errorEl.textContent = 'Error: ' + (err && err.message || String(err));
+    }
+  })();
+})();
 </script>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 </body>
