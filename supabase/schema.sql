@@ -1,4 +1,4 @@
-create extension if not exists pgcrypto;
+create extension if not exists "pgcrypto";
 
 create type verification_status as enum ('pending', 'approved', 'rejected');
 create type user_role as enum ('user', 'admin');
@@ -31,12 +31,15 @@ create or replace function set_updated_at() returns trigger as $$
 begin
   new.updated_at = now();
   return new;
-end; $$ language plpgsql;
+end;
+$$ language plpgsql;
 
 drop trigger if exists users_updated_at on public.users;
-create trigger users_updated_at before update on public.users
+create trigger users_updated_at
+before update on public.users
 for each row execute function set_updated_at();
 
 drop trigger if exists verifications_updated_at on public.verifications;
-create trigger verifications_updated_at before update on public.verifications
+create trigger verifications_updated_at
+before update on public.verifications
 for each row execute function set_updated_at();
