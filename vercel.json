@@ -1,7 +1,13 @@
 {
+  "version": 2,
+  "framework": "vite",
   "functions": {
-    "api/*.ts": {
-      "runtime": "nodejs18.x"
+    "api/*": {
+      "runtime": "nodejs20.x",
+      "memory": 512,
+      "maxDuration": 10
     }
-  }
+  },
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist"
 }
