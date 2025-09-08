@@ -12,7 +12,6 @@ function normalizeInitData(input: string): string {
   return s;
 }
 
-/** Split into pairs from a RAW query string */
 function parsePairs(raw: string): Array<[string,string]> {
   const out: Array<[string,string]> = [];
   for (const p of raw.split("&")) {
@@ -20,12 +19,11 @@ function parsePairs(raw: string): Array<[string,string]> {
     const i = p.indexOf("=");
     if (i <= 0) continue;
     const k = p.slice(0, i);
-    const v = p.slice(i + 1); // RAW (still percent-encoded)
+    const v = p.slice(i + 1); // RAW (percent-encoded)
     if (k === "hash" || k === "signature") continue; // exclude
     out.push([k, v]);
   }
-  // bytewise/lexicographic sort
-  out.sort((a,b)=> (a[0] < b[0] ? -1 : (a[0] > b[0] ? 1 : 0)));
+  out.sort((a,b)=> (a[0] < b[0] ? -1 : (a[0] > b[0] ? 1 : 0))); // bytewise
   return out;
 }
 
@@ -39,7 +37,6 @@ function dcsDecoded(pairs: Array<[string,string]>): string {
 function safeDecode(s: string): string {
   try { return decodeURIComponent(s); } catch { return s; }
 }
-
 function timingSafeEqualHex(a: string, b: string): boolean {
   try {
     const ba = Buffer.from(a, "hex");
@@ -53,26 +50,24 @@ export function validateInitData(input: string) {
   const raw = normalizeInitData(input);
   if (!raw) return { ok: false as const, reason: "missing initData" };
 
-  // extract provided hash from RAW
   const hashMatch = raw.split("&").find(p => p.startsWith("hash="));
   const providedHash = hashMatch ? hashMatch.slice(5) : "";
   if (!providedHash) return { ok: false as const, reason: "missing hash" };
 
-  const botToken = process.env.TELEGRAM_BOT_TOKEN || "";
-  if (!botToken) return { ok: false as const, reason: "missing bot token" };
-  const secret = crypto.createHash("sha256").update(botToken).digest();
+  const rawToken = (process.env.TELEGRAM_BOT_TOKEN || "").trim(); // TRIM!
+  if (!rawToken) return { ok: false as const, reason: "missing bot token" };
+  const secret = crypto.createHash("sha256").update(rawToken).digest();
 
   const pairs = parsePairs(raw);
-  const dcs1 = dcsRaw(pairs);               // RAW values
-  const dcs2 = dcsDecoded(pairs);           // URL-decoded values
+  const d1 = dcsRaw(pairs);
+  const d2 = dcsDecoded(pairs);
 
-  const h1 = crypto.createHmac("sha256", secret).update(dcs1).digest("hex");
-  const h2 = crypto.createHmac("sha256", secret).update(dcs2).digest("hex");
+  const h1 = crypto.createHmac("sha256", secret).update(d1).digest("hex");
+  const h2 = crypto.createHmac("sha256", secret).update(d2).digest("hex");
 
   const ok = timingSafeEqualHex(h1, providedHash) || timingSafeEqualHex(h2, providedHash);
   if (!ok) return { ok: false as const, reason: "invalid signature" };
 
-  // parse user after success (safe to decode)
   const params = new URLSearchParams(raw);
   const userRaw = params.get("user");
   const user = userRaw ? JSON.parse(userRaw) : null;
