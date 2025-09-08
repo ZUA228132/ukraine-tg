@@ -2,41 +2,68 @@
 <html>
   <head>
     <meta charset="utf-8"/>
-    <title>Prove Bot</title>
+    <title>Prove Bot v2</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
-      body { font:14px system-ui; padding:16px; background:#f9f9f9; }
-      button { padding:10px 16px; border-radius:8px; border:none; background:#0088cc; color:white; font-weight:600; cursor:pointer; margin-right:8px; }
-      button:hover { background:#0077bb; }
-      pre { margin-top:16px; padding:12px; background:#fff; border:1px solid #ddd; border-radius:6px; white-space:pre-wrap; word-break:break-word; }
+      :root { --bg:#0f172a; --fg:#e2e8f0; --btn:#0ea5e9; --card:#111827; }
+      body { font:14px system-ui; margin:0; background:#0b1220; color:var(--fg); }
+      header { padding:16px; font-weight:700; }
+      main { padding:16px; }
+      button { padding:10px 16px; border-radius:10px; border:none; background:var(--btn); color:white; font-weight:700; cursor:pointer; margin-right:8px; }
+      pre { margin-top:12px; padding:12px; background:#0e1526; border:1px solid #1f2937; border-radius:10px; white-space:pre-wrap; word-break:break-word; }
+      .row { display:flex; gap:8px; flex-wrap:wrap; margin-bottom:10px; }
+      textarea { width:100%; min-height:100px; padding:8px; border-radius:8px; border:1px solid #1f2937; background:#0e1526; color:var(--fg); }
+      small { opacity:.8; }
     </style>
   </head>
   <body>
-    <button id="btnEcho">Debug Echo</button>
-    <button id="btnProve">Prove Bot</button>
-    <pre id="out"></pre>
+    <header>Prove Bot v2</header>
+    <main>
+      <div class="row">
+        <button id="btnEcho">Debug Echo</button>
+        <button id="btnProve">Prove Bot</button>
+        <button id="btnShow">Show initData</button>
+        <button id="btnCopy">Copy initData</button>
+      </div>
+      <small>initData will be sent in <b>header</b> (<code>x-tg-initdata</code>), <b>body</b>, and <b>query</b> simultaneously.</small>
+      <pre id="out">Waiting…</pre>
+      <textarea id="init" placeholder="initData will appear here…"></textarea>
+    </main>
+<script>
+const out = document.getElementById('out');
+const tf  = document.getElementById('init');
+function log(x){ out.textContent = (typeof x==='string') ? x : JSON.stringify(x,null,2); }
+function getInitData(){
+  const s = Telegram?.WebApp?.initData || "";
+  tf.value = s;
+  return s;
+}
+Telegram.WebApp.ready();
 
-    <script>
-      const out = document.getElementById('out');
-      function log(x){ out.textContent = typeof x==='string'? x : JSON.stringify(x,null,2); }
-      Telegram.WebApp.ready();
+async function call(endpoint){
+  try{
+    const initData = getInitData();
+    if(!initData){ log("⚠️ initData is empty. Make sure you opened this page INSIDE Telegram."); return; }
+    log({ endpoint, initDataLen: initData.length, startsWith: initData.slice(0,60) });
+    const url = `${endpoint}?initData=${encodeURIComponent(initData)}`;
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+        'x-tg-initdata': initData
+      },
+      body: JSON.stringify({ initData })
+    });
+    const text = await r.text();
+    try { log(JSON.parse(text)); }
+    catch { log(`(HTTP ${r.status})\n` + text.slice(0,2000)); }
+  }catch(e){ log(String(e)); }
+}
 
-      async function callApi(endpoint) {
-        try {
-          const initData = Telegram?.WebApp?.initData || "";
-          log({ endpoint, initDataLen: initData.length, startsWith: initData.slice(0,40) });
-          const r = await fetch(endpoint, {
-            method: 'POST',
-            headers: { 'content-type': 'application/json' },
-            body: JSON.stringify({ initData })
-          });
-          const j = await r.json();
-          log(j);
-        } catch (e) { log(String(e)); }
-      }
-
-      document.getElementById('btnEcho').onclick = () => callApi('/api/debug-echo');
-      document.getElementById('btnProve').onclick = () => callApi('/api/debug-prove-bot');
-    </script>
+document.getElementById('btnEcho').onclick  = () => call('/api/debug-echo');
+document.getElementById('btnProve').onclick = () => call('/api/debug-prove-bot');
+document.getElementById('btnShow').onclick  = () => { getInitData(); log('initData loaded above'); };
+document.getElementById('btnCopy').onclick  = async () => { try { await navigator.clipboard.writeText(getInitData()); log('Copied'); } catch(e){ log('Copy failed: '+e); } };
+</script>
   </body>
 </html>
