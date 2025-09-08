@@ -6,6 +6,7 @@
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <style>
       :root { --bg:#0f172a; --fg:#e2e8f0; --btn:#0ea5e9; --card:#111827; }
+      *{box-sizing:border-box}
       body { font:14px system-ui; margin:0; background:#0b1220; color:var(--fg); }
       header { padding:16px; font-weight:700; }
       main { padding:16px; }
@@ -43,7 +44,7 @@ Telegram.WebApp.ready();
 async function call(endpoint){
   try{
     const initData = getInitData();
-    if(!initData){ log("⚠️ initData is empty. Make sure you opened this page INSIDE Telegram."); return; }
+    if(!initData){ log("⚠️ initData is empty. Open this page INSIDE Telegram."); return; }
     log({ endpoint, initDataLen: initData.length, startsWith: initData.slice(0,60) });
     const url = `${endpoint}?initData=${encodeURIComponent(initData)}`;
     const r = await fetch(url, {
