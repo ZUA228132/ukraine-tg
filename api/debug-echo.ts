@@ -26,17 +26,10 @@ function parsePairs(raw: string): Array<[string,string]> {
   return out;
 }
 function safeDecode(s: string): string { try { return decodeURIComponent(s); } catch { return s; } }
-function dcsRaw(pairs: Array<[string,string]>): string { return pairs.map(([k,v]) => `${k}=${v}`).join("\n"); }
-function dcsDecoded(pairs: Array<[string,string]>): string { return pairs.map(([k,v]) => `${k}=${safeDecode(v)}`).join("\n"); }
-function canonicalizeValue(key: string, rawValue: string): string {
-  const dec = safeDecode(rawValue);
-  const first = dec.trim()[0];
-  if (first === "{" || first === "[") {
-    try { return JSON.stringify(JSON.parse(dec)); } catch { return dec; }
-  }
-  return dec;
-}
-function dcsCanonical(pairs: Array<[string,string]>): string { return pairs.map(([k,v]) => `${k}=${canonicalizeValue(k,v)}`).join("\n"); }
+const dcsRaw  = (pairs: Array<[string,string]>) => pairs.map(([k,v]) => `${k}=${v}`).join("\n");
+const dcsDec  = (pairs: Array<[string,string]>) => pairs.map(([k,v]) => `${k}=${safeDecode(v)}`).join("\n");
+const canonVal= (v:string) => { const d = safeDecode(v); const f=d.trim()[0]; if (f==="{"||f==="[") { try { return JSON.stringify(JSON.parse(d)); } catch { return d; } } return d; };
+const dcsCan  = (pairs: Array<[string,string]>) => pairs.map(([k,v]) => `${k}=${canonVal(v)}`).join("\n");
 
 export default async function handler(req: any, res: any) {
   try {
@@ -51,34 +44,32 @@ export default async function handler(req: any, res: any) {
     const keysUsed = pairs.map(([k]) => k);
 
     const token = (process.env.TELEGRAM_BOT_TOKEN || "").trim();
-    const secret = token ? crypto.createHash("sha256").update(token).digest() : null;
+    const secretSha = token ? crypto.createHash("sha256").update(token).digest() : null;
+    const secretDirect = token ? Buffer.from(token, "utf8") : null;
 
     const d1 = dcsRaw(pairs);
-    const d2 = dcsDecoded(pairs);
-    const d3 = dcsCanonical(pairs);
+    const d2 = dcsDec(pairs);
+    const d3 = dcsCan(pairs);
 
-    const h1 = secret ? crypto.createHmac("sha256", secret).update(d1).digest("hex") : null;
-    const h2 = secret ? crypto.createHmac("sha256", secret).update(d2).digest("hex") : null;
-    const h3 = secret ? crypto.createHmac("sha256", secret).update(d3).digest("hex") : null;
+    const h1a = secretSha ? crypto.createHmac("sha256", secretSha).update(d1).digest("hex") : null;
+    const h2a = secretSha ? crypto.createHmac("sha256", secretSha).update(d2).digest("hex") : null;
+    const h3a = secretSha ? crypto.createHmac("sha256", secretSha).update(d3).digest("hex") : null;
 
-    const ok = Boolean(secret && providedHash && (h1 === providedHash || h2 === providedHash || h3 === providedHash));
+    const h1b = secretDirect ? crypto.createHmac("sha256", secretDirect).update(d1).digest("hex") : null;
+    const h2b = secretDirect ? crypto.createHmac("sha256", secretDirect).update(d2).digest("hex") : null;
+    const h3b = secretDirect ? crypto.createHmac("sha256", secretDirect).update(d3).digest("hex") : null;
+
+    const ok = Boolean(providedHash && token && [h1a,h2a,h3a,h1b,h2b,h3b].includes(providedHash));
 
     return res.status(ok ? 200 : 401).json({
       ok,
-      reason: ok
-        ? null
-        : !raw ? "missing initData"
-        : !providedHash ? "missing hash"
-        : !token ? "missing bot token"
-        : "invalid signature",
       providedHash,
-      computedRaw: h1,
-      computedDecoded: h2,
-      computedCanonical: h3,
       keysUsed,
+      computed: { h1a, h2a, h3a, h1b, h2b, h3b },
       rawDcs: d1,
       decodedDcs: d2,
-      canonicalDcs: d3
+      canonicalDcs: d3,
+      note: "hXa: secret=sha256(token); hXb: secret=token directly"
     });
   } catch (e: any) {
     return res.status(500).json({ ok:false, error: e?.message || "internal" });
