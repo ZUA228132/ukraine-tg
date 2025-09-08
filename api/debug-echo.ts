@@ -1,7 +1,6 @@
 // api/debug-echo.ts
 import crypto from "crypto";
 
-/** Normalize to RAW initData */
 function normalizeInitData(input: string): string {
   if (!input) return "";
   let s = input.trim();
@@ -20,10 +19,9 @@ function buildDataCheckString(rawInitData: string) {
 
   const kv: [string, string][] = [];
   for (const p of parts) {
-    const i = p.indexOf("=");
-    if (i <= 0) continue;
+    const i = p.indexOf("="); if (i <= 0) continue;
     const k = p.slice(0, i);
-    if (k === "hash") continue;
+    if (k === "hash" || k === "signature") continue; // <— ВАЖНО
     const v = p.slice(i + 1);
     kv.push([k, v]);
   }
@@ -48,18 +46,15 @@ export default async function handler(req: any, res: any) {
       ok,
       reason: ok
         ? null
-        : !raw
-          ? "missing initData"
-          : !providedHash
-            ? "missing hash"
-            : !botToken
-              ? "missing bot token"
-              : "invalid signature",
+        : !raw ? "missing initData"
+        : !providedHash ? "missing hash"
+        : !botToken ? "missing bot token"
+        : "invalid signature",
       snippet: raw ? raw.slice(0, 160) + (raw.length > 160 ? "…" : "") : null,
       providedHash: providedHash ? providedHash.slice(0, 16) + "…" : null,
       computedHash: computedHash ? computedHash.slice(0, 16) + "…" : null,
       length: raw.length,
-      keysUsed,
+      keysUsed,                       // ← здесь должно быть БЕЗ 'signature'
       dcsSnippet: dcs ? dcs.slice(0, 160) + (dcs.length > 160 ? "…" : "") : null
     });
   } catch (e: any) {
