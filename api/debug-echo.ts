@@ -1,3 +1,6 @@
+// api/debug-echo.ts
+// Full DCS debug: returns FULL data_check_string (raw & decoded) to pinpoint HMAC mismatch.
+// Use only for debugging; remove after success to avoid leaking long payloads.
 import crypto from "crypto";
 
 function normalizeInitData(input: string): string {
@@ -19,13 +22,13 @@ function parsePairs(raw: string): Array<[string,string]> {
     if (i <= 0) continue;
     const k = p.slice(0, i);
     const v = p.slice(i + 1);
-    if (k === "hash" || k === "signature") continue;
+    if (k === "hash" || k === "signature") continue; // exclude from DCS
     out.push([k, v]);
   }
+  // bytewise lexicographic order
   out.sort((a,b)=> (a[0] < b[0] ? -1 : (a[0] > b[0] ? 1 : 0)));
   return out;
 }
-
 function dcsRaw(pairs: Array<[string,string]>): string {
   return pairs.map(([k,v]) => `${k}=${v}`).join("\n");
 }
@@ -48,34 +51,34 @@ export default async function handler(req: any, res: any) {
     const pairs = parsePairs(raw);
     const keysUsed = pairs.map(([k]) => k);
 
-    const botToken = process.env.TELEGRAM_BOT_TOKEN || "";
-    const secret = botToken ? crypto.createHash("sha256").update(botToken).digest() : null;
+    const token = (process.env.TELEGRAM_BOT_TOKEN || "").trim();
+    const secret = token ? crypto.createHash("sha256").update(token).digest() : null;
 
-    const d1 = dcsRaw(pairs);
-    const d2 = dcsDecoded(pairs);
+    const rawDcs = dcsRaw(pairs);
+    const decDcs = dcsDecoded(pairs);
 
-    const h1 = secret ? crypto.createHmac("sha256", secret).update(d1).digest("hex") : null;
-    const h2 = secret ? crypto.createHmac("sha256", secret).update(d2).digest("hex") : null;
+    const hRaw = secret ? crypto.createHmac("sha256", secret).update(rawDcs).digest("hex") : null;
+    const hDec = secret ? crypto.createHmac("sha256", secret).update(decDcs).digest("hex") : null;
 
-    const ok = Boolean(secret && providedHash && (h1 === providedHash || h2 === providedHash));
+    const ok = Boolean(secret && providedHash && (hRaw === providedHash || hDec === providedHash));
 
     return res.status(ok ? 200 : 401).json({
       ok,
-      reason: ok ? null
+      reason: ok
+        ? null
         : !raw ? "missing initData"
         : !providedHash ? "missing hash"
-        : !botToken ? "missing bot token"
+        : !token ? "missing bot token"
         : "invalid signature",
-      snippet: raw ? raw.slice(0, 160) + (raw.length > 160 ? "…" : "") : null,
-      providedHash: providedHash ? providedHash.slice(0, 16) + "…" : null,
-      computedRaw: h1 ? h1.slice(0, 16) + "…" : null,
-      computedDecoded: h2 ? h2.slice(0, 16) + "…" : null,
-      length: raw.length,
+      providedHash,
+      computedRaw: hRaw,
+      computedDecoded: hDec,
       keysUsed,
-      dcsRawSnippet: d1 ? d1.slice(0, 160) + (d1.length > 160 ? "…" : "") : null,
-      dcsDecodedSnippet: d2 ? d2.slice(0, 160) + (d2.length > 160 ? "…" : "") : null
+      rawDcs,       // FULL strings for manual check
+      decodedDcs: decDcs,
+      note: "Remove this endpoint in production; it exposes full DCS for debugging only."
     });
   } catch (e: any) {
-    return res.status(500).json({ ok: false, error: e?.message || "internal" });
+    return res.status(500).json({ ok:false, error: e?.message || "internal" });
   }
 }
