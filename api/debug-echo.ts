@@ -1,11 +1,7 @@
 // api/debug-echo.ts
 import crypto from "crypto";
 
-const ALLOWED_KEYS = new Set([
-  "auth_date","can_send_after","chat","chat_instance","chat_type",
-  "hash","query_id","receiver","start_param","user",
-]);
-
+/** Normalize to RAW initData */
 function normalizeInitData(input: string): string {
   if (!input) return "";
   let s = input.trim();
@@ -17,30 +13,31 @@ function normalizeInitData(input: string): string {
   return s;
 }
 
-function buildDCS(raw: string) {
-  const parts = raw.split("&").filter(Boolean);
-  const hashPair = parts.find((p) => p.startsWith("hash="));
+function buildDataCheckString(rawInitData: string) {
+  const parts = rawInitData.split("&").filter(Boolean);
+  const hashPair = parts.find(p => p.startsWith("hash="));
   const providedHash = hashPair ? hashPair.slice(5) : "";
 
-  const kv: [string,string][] = [];
+  const kv: [string, string][] = [];
   for (const p of parts) {
-    const i = p.indexOf("="); if (i <= 0) continue;
+    const i = p.indexOf("=");
+    if (i <= 0) continue;
     const k = p.slice(0, i);
     if (k === "hash") continue;
-    if (!ALLOWED_KEYS.has(k)) continue;
     const v = p.slice(i + 1);
     kv.push([k, v]);
   }
   kv.sort((a, b) => a[0].localeCompare(b[0]));
-  const dcs = kv.map(([k,v]) => `${k}=${v}`).join("\n");
-  return { dcs, providedHash };
+  const dcs = kv.map(([k, v]) => `${k}=${v}`).join("\n");
+  const keysUsed = kv.map(([k]) => k);
+  return { dcs, providedHash, keysUsed };
 }
 
 export default async function handler(req: any, res: any) {
   try {
     const rawHeader = String(req.headers["x-tg-initdata"] || "");
     const raw = normalizeInitData(rawHeader);
-    const { dcs, providedHash } = buildDCS(raw);
+    const { dcs, providedHash, keysUsed } = buildDataCheckString(raw);
 
     const botToken = process.env.TELEGRAM_BOT_TOKEN || "";
     const secret = botToken ? crypto.createHash("sha256").update(botToken).digest() : null;
@@ -58,10 +55,12 @@ export default async function handler(req: any, res: any) {
             : !botToken
               ? "missing bot token"
               : "invalid signature",
-      snippet: raw ? raw.slice(0, 120) + (raw.length > 120 ? "…" : "") : null,
+      snippet: raw ? raw.slice(0, 160) + (raw.length > 160 ? "…" : "") : null,
       providedHash: providedHash ? providedHash.slice(0, 16) + "…" : null,
       computedHash: computedHash ? computedHash.slice(0, 16) + "…" : null,
-      length: raw.length
+      length: raw.length,
+      keysUsed,
+      dcsSnippet: dcs ? dcs.slice(0, 160) + (dcs.length > 160 ? "…" : "") : null
     });
   } catch (e: any) {
     return res.status(500).json({ ok: false, error: e?.message || "internal" });
