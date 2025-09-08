@@ -1,4 +1,9 @@
 // api/_util.ts
+// FINAL FIX: include 'signature' in DCS, exclude only 'hash'.
+// - secret = sha256(TELEGRAM_BOT_TOKEN)
+// - Keys except 'hash' sorted ASCII
+// - JSON values canonicalized (JSON.parse -> JSON.stringify)
+// - Supports multiple tokens in TELEGRAM_BOT_TOKENS_CSV for safe rotation
 import crypto from 'crypto';
 
 function normalizeInitData(input: string): string {
@@ -24,7 +29,8 @@ function extractPairs(raw: string): Array<[string,string]> {
     if (i <= 0) continue;
     const k = p.slice(0, i);
     const v = p.slice(i + 1);
-    if (k === 'hash' || k === 'signature') continue;
+    // IMPORTANT: exclude ONLY 'hash'; 'signature' must be INCLUDED if present
+    if (k === 'hash') continue;
     out.push([k, v]);
   }
   out.sort((a,b)=> a[0] < b[0] ? -1 : a[0] > b[0] ? 1 : 0);
