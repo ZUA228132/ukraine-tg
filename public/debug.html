@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <title>Telegram WebApp Debug</title>
+  <style>
+    body {
+      font-family: system-ui, -apple-system, sans-serif;
+      background: #0d1117;
+      color: #c9d1d9;
+      padding: 20px;
+    }
+    pre {
+      background: #161b22;
+      padding: 12px;
+      border-radius: 6px;
+      white-space: pre-wrap;
+      word-break: break-all;
+    }
+    .ok { color: #8bd17c; }
+    .fail { color: #ff8b8b; }
+  </style>
+</head>
+<body>
+  <h1>Debug initData</h1>
+  <div id="status">⏳ Checking...</div>
+  <pre id="output"></pre>
+
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <script>
+    (async function(){
+      try {
+        const initData = window?.Telegram?.WebApp?.initData || "";
+        const res = await fetch("/api/debug-echo", {
+          headers: { "x-tg-initdata": initData }
+        });
+        const json = await res.json();
+        document.getElementById("output").textContent = JSON.stringify(json, null, 2);
+        if (json.ok) {
+          document.getElementById("status").innerHTML = "✅ <span class='ok'>HMAC OK</span>";
+        } else {
+          document.getElementById("status").innerHTML = "❌ <span class='fail'>"+(json.reason||"fail")+"</span>";
+        }
+      } catch (e) {
+        document.getElementById("status").innerHTML = "⚠️ Error: " + e.message;
+      }
+    })();
+  </script>
+</body>
+</html>
