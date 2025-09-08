@@ -1,9 +1,6 @@
 // api/debug-prove-bot.ts
-// WARNING: This will call Telegram Bot API `answerWebAppQuery` using your server token
-// and WILL send a tiny message to the user who opened the WebApp (once).
-// Purpose: prove whether the current `query_id` belongs to *this* bot/token.
-// If Telegram returns 400 with "WEBAPP_QUERY_NOT_FOUND" or similar -> initData was NOT signed by this bot.
-import type { VercelRequest, VercelResponse } from "@vercel/node";
+// Пробивает через Telegram Bot API, что текущий query_id принадлежит ИМЕННО вашему боту.
+// Отправит 1 маленькое сообщение "✅ WebApp query matched this bot." пользователю, открывшему WebApp.
 
 function normalizeInitData(input: string): string {
   if (!input) return "";
@@ -16,7 +13,7 @@ function normalizeInitData(input: string): string {
   return s;
 }
 
-export default async function handler(req: VercelRequest, res: VercelResponse) {
+export default async function handler(req: any, res: any) {
   try {
     const token = (process.env.TELEGRAM_BOT_TOKEN || "").trim();
     if (!token) return res.status(500).json({ ok:false, error:"missing bot token" });
@@ -29,7 +26,6 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     const query_id = params.get("query_id");
     if (!query_id) return res.status(400).json({ ok:false, error:"no query_id in initData" });
 
-    // Minimal InlineQueryResultArticle
     const body = {
       web_app_query_id: query_id,
       result: {
@@ -41,7 +37,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
       }
     };
 
-    const url = "https://api.telegram.org/bot"+encodeURIComponent(token)+"/answerWebAppQuery";
+    const url = "https://api.telegram.org/bot" + encodeURIComponent(token) + "/answerWebAppQuery";
     const r = await fetch(url, {
       method: "POST",
       headers: { "content-type": "application/json" },
@@ -49,8 +45,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     });
 
     const j = await r.json().catch(()=>null);
-    // j.ok === true -> this bot recognized the query_id (=> you are opening the correct bot)
-    // j.ok === false and error_code=400 with WEBAPP_QUERY_NOT_FOUND -> wrong bot
+    // ok:true -> query_id действительно принадлежит этому боту/токену
+    // ok:false + WEBAPP_QUERY_NOT_FOUND -> initData подписан не этим ботом
     return res.status(j?.ok ? 200 : 400).json({ ok: !!j?.ok, telegram: j });
   } catch (e:any) {
     return res.status(500).json({ ok:false, error: e?.message || "internal" });
